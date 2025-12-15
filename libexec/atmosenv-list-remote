@@ -75,12 +75,15 @@ fetch_versions() {
         versions="$(echo "${response}" | jq -r '.[] | select(.prerelease == false) | .tag_name' 2>/dev/null)"
       fi
     else
-      # Fallback: grep for tag_name
-      versions="$(echo "${response}" | grep -o '"tag_name":\s*"[^"]*"' | cut -d'"' -f4)"
+      # Fallback: grep for tag_name (jq not available)
+      # Note: Without jq, prerelease filtering uses version naming patterns only,
+      # not the actual 'prerelease' field from GitHub API
+      versions="$(echo "${response}" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | cut -d'"' -f4)"
 
-      # If not including prereleases, filter them out
+      # If not including prereleases, filter by common prerelease naming patterns
       if [[ "${include_prereleases}" != "true" ]]; then
-        versions="$(echo "${versions}" | grep -v -E '(alpha|beta|rc)' || true)"
+        log_debug "Filtering prereleases by naming pattern (install jq for accurate filtering)"
+        versions="$(echo "${versions}" | grep -v -E '[-.]*(alpha|beta|rc|dev|pre|snapshot|nightly)[-.0-9]*$' || true)"
       fi
     fi
 

@@ -34,9 +34,12 @@ get_version() {
 
   # 3. Fallback to latest installed
   if [[ -z "${version}" ]]; then
-    version="$(find "${ATMOSENV_CONFIG_DIR}/versions" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | \
-      sort -t. -k1,1nr -k2,2nr -k3,3nr | head -n1)" || true
-    log_debug "Using latest installed version: ${version}"
+    local versions_dir="${ATMOSENV_CONFIG_DIR}/versions"
+    if [[ -d "${versions_dir}" ]]; then
+      version="$(find "${versions_dir}" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | \
+        sort -t. -k1,1nr -k2,2nr -k3,3nr | head -n1)" || true
+      log_debug "Using latest installed version: ${version}"
+    fi
   fi
 
   clean_version "${version}"

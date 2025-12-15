@@ -76,6 +76,13 @@ main() {
     abort "Atmos ${version} is not installed"
   fi
 
+  # Read default version BEFORE deletion to avoid race condition
+  local default_version_file="${ATMOSENV_CONFIG_DIR}/version"
+  local default_version=""
+  if [[ -f "${default_version_file}" ]]; then
+    default_version="$(cat "${default_version_file}")"
+  fi
+
   # Confirm unless forced
   if [[ "${force}" != "true" ]]; then
     log_warn "This will remove Atmos ${version} from ${version_dir}"
@@ -98,15 +105,10 @@ main() {
 
   log_info "Uninstalled Atmos ${version}"
 
-  # Check if this was the default version
-  local default_version_file="${ATMOSENV_CONFIG_DIR}/version"
-  if [[ -f "${default_version_file}" ]]; then
-    local default_version
-    default_version="$(cat "${default_version_file}")"
-    if [[ "${default_version}" == "${version}" ]]; then
-      log_warn "Note: ${version} was your default version"
-      log_info "Run 'atmosenv use <version>' to set a new default"
-    fi
+  # Warn if this was the default version
+  if [[ "${default_version}" == "${version}" ]]; then
+    log_warn "Note: ${version} was your default version"
+    log_info "Run 'atmosenv use <version>' to set a new default"
   fi
 }
 

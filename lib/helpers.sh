@@ -18,9 +18,6 @@ fi
 # Default configuration directory (XDG compliant)
 : "${ATMOSENV_CONFIG_DIR:=${XDG_CONFIG_HOME:-${HOME}/.config}/atmosenv}"
 
-# Default remote URL for Atmos releases
-: "${ATMOSENV_REMOTE:=https://github.com/cloudposse/atmos/releases}"
-
 # GitHub API endpoint
 : "${ATMOSENV_GITHUB_API:=https://api.github.com/repos/cloudposse/atmos/releases}"
 
@@ -115,6 +112,7 @@ command_exists() {
 
 # Download with curl or wget
 # Uses GITHUB_TOKEN for GitHub API requests if available (avoids rate limiting)
+# Security: limits redirects to prevent redirect attacks
 curlw() {
   local url="${1}"
   shift
@@ -123,19 +121,20 @@ curlw() {
   local auth_header=""
   if [[ -n "${GITHUB_TOKEN:-}" ]] && [[ "${url}" == *"api.github.com"* ]]; then
     auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
+    log_debug "Using GitHub token for API request (token masked)"
   fi
 
   if command_exists curl; then
     if [[ -n "${auth_header}" ]]; then
-      curl -fsSL -H "${auth_header}" "${url}" "$@"
+      curl -fsSL --max-redirs 3 -H "${auth_header}" "${url}" "$@"
     else
-      curl -fsSL "${url}" "$@"
+      curl -fsSL --max-redirs 3 "${url}" "$@"
     fi
   elif command_exists wget; then
     if [[ -n "${auth_header}" ]]; then
-      wget -qO- --header="${auth_header}" "${url}" "$@"
+      wget -qO- --max-redirect=3 --header="${auth_header}" "${url}" "$@"
     else
-      wget -qO- "${url}" "$@"
+      wget -qO- --max-redirect=3 "${url}" "$@"
     fi
   else
     abort "Neither curl nor wget found. Please install one of them."
@@ -143,6 +142,7 @@ curlw() {
 }
 
 # Download file with progress
+# Security: limits redirects to prevent redirect attacks
 download_file() {
   local url="${1}"
   local dest="${2}"
@@ -150,9 +150,9 @@ download_file() {
   log_info "Downloading ${url}"
 
   if command_exists curl; then
-    curl -fL --progress-bar -o "${dest}" "${url}"
+    curl -fL --max-redirs 3 --progress-bar -o "${dest}" "${url}"
   elif command_exists wget; then
-    wget --progress=bar:force -O "${dest}" "${url}"
+    wget --max-redirect=3 --progress=bar:force -O "${dest}" "${url}"
   else
     abort "Neither curl nor wget found. Please install one of them."
   fi

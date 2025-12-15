@@ -35,7 +35,7 @@ source "${ATMOSENV_ROOT}/lib/helpers.sh"
 export PATH="${ATMOSENV_ROOT}/libexec:${ATMOSENV_ROOT}/bin:${PATH}"
 
 # Version
-ATMOSENV_VERSION="0.1.0"
+ATMOSENV_VERSION="0.1.1"
 
 # Print usage
 usage() {
