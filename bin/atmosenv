@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# atmosenv - Atmos version manager inspired by tfenv
+# Main entry point - routes commands to subcommands
+
+set -eo pipefail
+
+# Resolve ATMOSENV_ROOT from script location
+# This handles symlinks correctly (important for Homebrew)
+resolve_root() {
+  local source="${BASH_SOURCE[0]}"
+  local dir
+
+  # Resolve symlinks
+  while [[ -L "${source}" ]]; do
+    dir="$(cd -P "$(dirname "${source}")" && pwd)"
+    source="$(readlink "${source}")"
+    # Handle relative symlinks
+    [[ "${source}" != /* ]] && source="${dir}/${source}"
+  done
+
+  dir="$(cd -P "$(dirname "${source}")" && pwd)"
+  # Return parent of bin directory
+  echo "$(cd "${dir}/.." && pwd)"
+}
+
+export ATMOSENV_ROOT="${ATMOSENV_ROOT:-$(resolve_root)}"
+
+# Source core libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+
+# Add libexec and bin to PATH
+export PATH="${ATMOSENV_ROOT}/libexec:${ATMOSENV_ROOT}/bin:${PATH}"
+
+# Version
+ATMOSENV_VERSION="0.1.0"
+
+# Print usage
+usage() {
+  cat <<EOF
+atmosenv ${ATMOSENV_VERSION}
+Atmos version manager inspired by tfenv
+
+Usage: atmosenv <command> [<args>]
+
+Commands:
+   install       Install a specific version of Atmos
+   use           Switch to a specific Atmos version
+   uninstall     Uninstall a specific version of Atmos
+   list          List all installed Atmos versions
+   list-remote   List all available Atmos versions
+   version-name  Print current Atmos version
+   version-file  Print the path to the version file
+   init          Configure shell environment for atmosenv
+   help          Show this help message
+
+Environment Variables:
+   ATMOSENV_CONFIG_DIR     Configuration directory (default: ~/.config/atmosenv)
+   ATMOSENV_ATMOS_VERSION  Override version selection
+   ATMOSENV_AUTO_INSTALL   Auto-install missing versions (default: true)
+   ATMOSENV_LOG_LEVEL      Log level: DEBUG, INFO, WARN, ERROR (default: INFO)
+
+Examples:
+   atmosenv install 1.201.0     Install Atmos version 1.201.0
+   atmosenv install latest      Install the latest Atmos version
+   atmosenv use 1.201.0         Switch to version 1.201.0
+   atmosenv list                List installed versions
+   atmosenv list-remote         List available versions
+
+For more information, visit: https://github.com/cloudposse/atmosenv
+EOF
+}
+
+# Main command router
+main() {
+  local command="${1:-}"
+
+  case "${command}" in
+    ""|help|-h|--help)
+      usage
+      exit 0
+      ;;
+    -v|--version|---version)
+      echo "atmosenv ${ATMOSENV_VERSION}"
+      exit 0
+      ;;
+    *)
+      # Check if subcommand exists
+      local subcommand="${ATMOSENV_ROOT}/libexec/atmosenv-${command}"
+      if [[ ! -x "${subcommand}" ]]; then
+        log_error "Unknown command: ${command}"
+        echo ""
+        usage
+        exit 1
+      fi
+
+      # Execute subcommand with remaining arguments
+      shift
+      exec "${subcommand}" "$@"
+      ;;
+  esac
+}
+
+main "$@"

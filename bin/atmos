@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# atmos - Wrapper shim for Atmos
+# This script intercepts atmos commands and routes them through atmosenv
+# Enables transparent version switching based on .atmos-version files
+
+set -eo pipefail
+
+# Resolve ATMOSENV_ROOT from script location
+resolve_root() {
+  local source="${BASH_SOURCE[0]}"
+  local dir
+
+  while [[ -L "${source}" ]]; do
+    dir="$(cd -P "$(dirname "${source}")" && pwd)"
+    source="$(readlink "${source}")"
+    [[ "${source}" != /* ]] && source="${dir}/${source}"
+  done
+
+  dir="$(cd -P "$(dirname "${source}")" && pwd)"
+  echo "$(cd "${dir}/.." && pwd)"
+}
+
+export ATMOSENV_ROOT="${ATMOSENV_ROOT:-$(resolve_root)}"
+
+# Source core libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+
+# Add libexec to PATH
+export PATH="${ATMOSENV_ROOT}/libexec:${PATH}"
+
+# Execute atmos through atmosenv-exec
+exec "${ATMOSENV_ROOT}/libexec/atmosenv-exec" "$@"

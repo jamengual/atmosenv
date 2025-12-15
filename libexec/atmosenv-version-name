@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# atmosenv-version-name - Print the current Atmos version
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+# shellcheck source=lib/atmosenv-version-file.sh
+source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv version-name [OPTIONS]
+
+Print the currently selected Atmos version.
+
+Options:
+   -h, --help  Show this help message
+
+Version Resolution Order:
+   1. ATMOSENV_ATMOS_VERSION environment variable
+   2. .atmos-version file (searched in current and parent directories)
+   3. ~/.atmos-version file
+   4. ${ATMOSENV_CONFIG_DIR}/version file
+   5. Latest installed version (fallback)
+EOF
+}
+
+# Get latest installed version as fallback
+get_latest_installed() {
+  local versions_dir="${ATMOSENV_CONFIG_DIR}/versions"
+
+  if [[ ! -d "${versions_dir}" ]]; then
+    return 1
+  fi
+
+  find "${versions_dir}" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | \
+    sort -t. -k1,1nr -k2,2nr -k3,3nr | \
+    head -n1
+}
+
+main() {
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        abort "Unexpected argument: ${1}"
+        ;;
+    esac
+    shift
+  done
+
+  local version=""
+  local source=""
+
+  # 1. Check environment variable (highest priority)
+  if [[ -n "${ATMOSENV_ATMOS_VERSION:-}" ]]; then
+    version="${ATMOSENV_ATMOS_VERSION}"
+    source="ATMOSENV_ATMOS_VERSION"
+    log_debug "Version from environment variable: ${version}"
+  fi
+
+  # 2. Check version file
+  if [[ -z "${version}" ]]; then
+    local version_file
+    version_file="$(get_version_file)"
+
+    if [[ -f "${version_file}" ]]; then
+      version="$(read_version_file "${version_file}")" || true
+      source="${version_file}"
+      log_debug "Version from file ${version_file}: ${version}"
+    fi
+  fi
+
+  # 3. Fallback to latest installed
+  if [[ -z "${version}" ]]; then
+    version="$(get_latest_installed)" || true
+    source="latest installed"
+    log_debug "Version from latest installed: ${version}"
+  fi
+
+  # Clean version
+  version="$(clean_version "${version}")"
+
+  if [[ -z "${version}" ]]; then
+    abort "No Atmos version selected and no versions installed"
+  fi
+
+  echo "${version}"
+}
+
+main "$@"

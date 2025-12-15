@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# atmosenv-list - List installed Atmos versions
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+# shellcheck source=lib/atmosenv-version-file.sh
+source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv list [OPTIONS]
+
+List all installed Atmos versions.
+
+Options:
+   -h, --help  Show this help message
+
+Output:
+   * indicates the currently active version
+   Source of the active version is shown in parentheses
+EOF
+}
+
+# Get current version and its source
+get_current_version() {
+  local version=""
+  local source=""
+
+  # Check environment variable first
+  if [[ -n "${ATMOSENV_ATMOS_VERSION:-}" ]]; then
+    version="${ATMOSENV_ATMOS_VERSION}"
+    source="ATMOSENV_ATMOS_VERSION environment variable"
+  else
+    # Find version file
+    local version_file
+    version_file="$(get_version_file)"
+
+    if [[ -f "${version_file}" ]]; then
+      version="$(read_version_file "${version_file}")" || true
+      source="${version_file}"
+    fi
+  fi
+
+  # Clean version
+  version="$(clean_version "${version}")"
+
+  echo "${version}|${source}"
+}
+
+main() {
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        abort "Unexpected argument: ${1}"
+        ;;
+    esac
+    shift
+  done
+
+  local versions_dir="${ATMOSENV_CONFIG_DIR}/versions"
+
+  # Check if versions directory exists
+  if [[ ! -d "${versions_dir}" ]]; then
+    log_warn "No Atmos versions installed"
+    log_info "Run 'atmosenv install <version>' to install a version"
+    exit 0
+  fi
+
+  # Get list of installed versions
+  local versions
+  versions="$(find "${versions_dir}" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | \
+    sort -t. -k1,1nr -k2,2nr -k3,3nr)" || true
+
+  if [[ -z "${versions}" ]]; then
+    log_warn "No Atmos versions installed"
+    log_info "Run 'atmosenv install <version>' to install a version"
+    exit 0
+  fi
+
+  # Get current version and source
+  local current_info
+  current_info="$(get_current_version)"
+  local current_version="${current_info%%|*}"
+  local current_source="${current_info#*|}"
+
+  # Display versions
+  while IFS= read -r version; do
+    if [[ "${version}" == "${current_version}" ]]; then
+      echo "* ${version} (set by ${current_source})"
+    else
+      echo "  ${version}"
+    fi
+  done <<< "${versions}"
+}
+
+main "$@"

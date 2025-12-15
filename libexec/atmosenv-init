@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# atmosenv-init - Configure shell environment for atmosenv
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv init [OPTIONS] [SHELL]
+
+Configure shell environment for atmosenv.
+
+Arguments:
+   SHELL       Shell to configure (bash, zsh, fish)
+               Auto-detected if not specified
+
+Options:
+   -           Output shell initialization script (for eval)
+   -h, --help  Show this help message
+
+Examples:
+   # Add to ~/.bashrc or ~/.zshrc:
+   eval "\$(atmosenv init -)"
+
+   # Or manually source the setup:
+   atmosenv init bash
+EOF
+}
+
+# Detect current shell
+detect_shell() {
+  local shell_name
+
+  # Try SHELL environment variable
+  if [[ -n "${SHELL:-}" ]]; then
+    shell_name="$(basename "${SHELL}")"
+  else
+    # Fallback to ps command
+    shell_name="$(ps -p $$ -o comm= 2>/dev/null | sed 's/^-//')" || true
+  fi
+
+  case "${shell_name}" in
+    bash|zsh|fish)
+      echo "${shell_name}"
+      ;;
+    *)
+      echo "bash"  # Default to bash
+      ;;
+  esac
+}
+
+# Generate initialization script for bash/zsh
+init_bash_zsh() {
+  cat <<'INITSCRIPT'
+# atmosenv initialization
+# Add atmosenv to PATH
+export PATH="${ATMOSENV_ROOT:-${HOME}/.atmosenv}/bin:${PATH}"
+
+# atmosenv shell function
+atmosenv() {
+  local command="${1:-}"
+  if [[ "${command}" == "use" ]]; then
+    # Source use command to update PATH in current shell
+    eval "$("${ATMOSENV_ROOT:-${HOME}/.atmosenv}/bin/atmosenv" "$@")"
+  else
+    command "${ATMOSENV_ROOT:-${HOME}/.atmosenv}/bin/atmosenv" "$@"
+  fi
+}
+INITSCRIPT
+}
+
+# Generate initialization script for fish
+init_fish() {
+  cat <<'INITSCRIPT'
+# atmosenv initialization for fish
+set -gx PATH $ATMOSENV_ROOT/bin $PATH
+
+function atmosenv
+  set -l command $argv[1]
+  if test "$command" = "use"
+    eval ($ATMOSENV_ROOT/bin/atmosenv $argv)
+  else
+    command $ATMOSENV_ROOT/bin/atmosenv $argv
+  end
+end
+INITSCRIPT
+}
+
+main() {
+  local shell=""
+  local output_script=false
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -)
+        output_script=true
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        shell="${1}"
+        ;;
+    esac
+    shift
+  done
+
+  # Auto-detect shell if not specified
+  if [[ -z "${shell}" ]]; then
+    shell="$(detect_shell)"
+  fi
+
+  if [[ "${output_script}" == "true" ]]; then
+    # Output initialization script for eval
+    case "${shell}" in
+      bash|zsh)
+        init_bash_zsh
+        ;;
+      fish)
+        init_fish
+        ;;
+      *)
+        abort "Unsupported shell: ${shell}"
+        ;;
+    esac
+  else
+    # Print instructions
+    echo "# atmosenv shell setup"
+    echo ""
+    echo "# Add the following to your shell configuration file:"
+    echo ""
+
+    case "${shell}" in
+      bash)
+        echo "# For bash, add to ~/.bashrc or ~/.bash_profile:"
+        echo 'eval "$(atmosenv init -)"'
+        ;;
+      zsh)
+        echo "# For zsh, add to ~/.zshrc:"
+        echo 'eval "$(atmosenv init -)"'
+        ;;
+      fish)
+        echo "# For fish, add to ~/.config/fish/config.fish:"
+        echo 'atmosenv init - | source'
+        ;;
+      *)
+        abort "Unsupported shell: ${shell}"
+        ;;
+    esac
+
+    echo ""
+    echo "# Then restart your shell or run:"
+    echo "#   source ~/.${shell}rc  # or appropriate file"
+  fi
+}
+
+main "$@"

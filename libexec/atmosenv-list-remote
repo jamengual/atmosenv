@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# atmosenv-list-remote - List available Atmos versions from GitHub
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv list-remote [OPTIONS]
+
+List available Atmos versions from GitHub releases.
+
+Options:
+   -n, --limit N     Limit output to N versions (default: all)
+   -a, --all         Show all versions (default behavior)
+   -p, --prereleases Include pre-release versions (alpha, beta, rc)
+   -r, --reverse     Show oldest versions first
+   -h, --help        Show this help message
+
+Examples:
+   atmosenv list-remote              List recent 20 versions
+   atmosenv list-remote -a           List all versions
+   atmosenv list-remote -n 10        List 10 most recent versions
+   atmosenv list-remote -p           Include pre-release versions
+EOF
+}
+
+# Fetch versions from GitHub API (optimized - stops when we have enough)
+fetch_versions() {
+  local limit="${1:-0}"  # 0 = no limit
+  local include_prereleases="${2:-false}"
+
+  local page=1
+  local per_page=100
+  local collected=0
+  local all_versions=""
+
+  log_debug "Fetching versions from GitHub API (limit: ${limit})"
+
+  while true; do
+    # If we have enough versions, stop fetching
+    if [[ ${limit} -gt 0 ]] && [[ ${collected} -ge ${limit} ]]; then
+      log_debug "Collected enough versions (${collected}), stopping pagination"
+      break
+    fi
+
+    local url="${ATMOSENV_GITHUB_API}?per_page=${per_page}&page=${page}"
+    log_debug "Fetching page ${page}: ${url}"
+
+    local response
+    response="$(curlw "${url}")" || {
+      if [[ ${page} -eq 1 ]]; then
+        abort "Failed to fetch releases from GitHub API"
+      fi
+      break
+    }
+
+    # Check if response is empty array
+    if [[ "${response}" == "[]" ]]; then
+      log_debug "Empty response, no more pages"
+      break
+    fi
+
+    # Parse versions from JSON
+    local versions
+    if command_exists jq; then
+      if [[ "${include_prereleases}" == "true" ]]; then
+        versions="$(echo "${response}" | jq -r '.[].tag_name' 2>/dev/null)"
+      else
+        versions="$(echo "${response}" | jq -r '.[] | select(.prerelease == false) | .tag_name' 2>/dev/null)"
+      fi
+    else
+      # Fallback: grep for tag_name
+      versions="$(echo "${response}" | grep -o '"tag_name":\s*"[^"]*"' | cut -d'"' -f4)"
+
+      # If not including prereleases, filter them out
+      if [[ "${include_prereleases}" != "true" ]]; then
+        versions="$(echo "${versions}" | grep -v -E '(alpha|beta|rc)' || true)"
+      fi
+    fi
+
+    if [[ -z "${versions}" ]]; then
+      log_debug "No versions found on page ${page}"
+      break
+    fi
+
+    # Count how many we got
+    local count
+    count="$(echo "${versions}" | wc -l | tr -d ' ')"
+    collected=$((collected + count))
+    log_debug "Got ${count} versions on page ${page}, total: ${collected}"
+
+    all_versions="${all_versions}${versions}"$'\n'
+    ((page++))
+
+    # Safety limit
+    if [[ ${page} -gt 20 ]]; then
+      log_debug "Reached page safety limit"
+      break
+    fi
+  done
+
+  # Clean and return versions (remove 'v' prefix)
+  # Use sed instead of while loop to avoid subshell issues
+  echo "${all_versions}" | sed '/^$/d' | sed 's/^v//'
+}
+
+main() {
+  local limit=0  # 0 = no limit (show all, like tfenv)
+  local include_prereleases=false
+  local reverse=false
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -n|--limit)
+        shift
+        limit="${1}"
+        ;;
+      -a|--all)
+        limit=0
+        ;;
+      -p|--prereleases)
+        include_prereleases=true
+        ;;
+      -r|--reverse)
+        reverse=true
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        abort "Unexpected argument: ${1}"
+        ;;
+    esac
+    shift
+  done
+
+  log_info "Fetching available Atmos versions..."
+
+  # Fetch versions (pass limit to optimize pagination)
+  local fetch_limit=${limit}
+  # Fetch a bit more to account for sorting/filtering
+  if [[ ${limit} -gt 0 ]]; then
+    fetch_limit=$((limit + 50))
+  fi
+
+  local versions
+  versions="$(fetch_versions "${fetch_limit}" "${include_prereleases}")"
+
+  if [[ -z "${versions}" ]]; then
+    abort "No versions found"
+  fi
+
+  # Sort versions (semver)
+  local sorted
+  if [[ "${reverse}" == "true" ]]; then
+    # Ascending order (oldest first)
+    sorted="$(echo "${versions}" | sort -t. -k1,1n -k2,2n -k3,3n | uniq)"
+  else
+    # Descending order (newest first) - default
+    sorted="$(echo "${versions}" | sort -t. -k1,1nr -k2,2nr -k3,3nr | uniq)"
+  fi
+
+  # Apply limit
+  if [[ ${limit} -gt 0 ]]; then
+    sorted="$(echo "${sorted}" | head -n "${limit}")"
+  fi
+
+  # Output
+  echo "${sorted}"
+}
+
+main "$@"

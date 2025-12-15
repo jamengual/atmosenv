@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# atmosenv-version-file - Print the path to the version file being used
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+# shellcheck source=lib/atmosenv-version-file.sh
+source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv version-file [OPTIONS]
+
+Print the path to the version file being used.
+
+Options:
+   -h, --help  Show this help message
+
+Search Order:
+   1. .atmos-version in current directory
+   2. .atmos-version in parent directories (up to root)
+   3. ~/.atmos-version
+   4. ${ATMOSENV_CONFIG_DIR}/version
+EOF
+}
+
+main() {
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        abort "Unexpected argument: ${1}"
+        ;;
+    esac
+    shift
+  done
+
+  local version_file
+  version_file="$(get_version_file)"
+
+  echo "${version_file}"
+}
+
+main "$@"

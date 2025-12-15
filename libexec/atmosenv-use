@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# atmosenv-use - Switch to a specific Atmos version
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+# shellcheck source=lib/atmosenv-version-file.sh
+source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv use [OPTIONS] [VERSION]
+
+Switch to a specific Atmos version.
+
+Arguments:
+   VERSION     Version to use (e.g., 1.201.0)
+               If not specified, reads from .atmos-version file
+
+Options:
+   -h, --help  Show this help message
+
+Examples:
+   atmosenv use 1.201.0    Switch to version 1.201.0
+   atmosenv use            Use version from .atmos-version file
+
+Note: This sets the default version in ${ATMOSENV_CONFIG_DIR}/version
+      For project-specific versions, create a .atmos-version file
+EOF
+}
+
+# Get latest installed version
+get_latest_installed() {
+  local versions_dir="${ATMOSENV_CONFIG_DIR}/versions"
+
+  if [[ ! -d "${versions_dir}" ]]; then
+    return 1
+  fi
+
+  # Find latest installed version using semver sorting
+  find "${versions_dir}" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | \
+    sort -t. -k1,1nr -k2,2nr -k3,3nr | \
+    head -n1
+}
+
+# Check if version is installed
+is_installed() {
+  local version="${1}"
+  local binary="${ATMOSENV_CONFIG_DIR}/versions/${version}/atmos"
+
+  [[ -f "${binary}" ]] && [[ -x "${binary}" ]]
+}
+
+# Resolve version string
+resolve_version() {
+  local requested="${1:-}"
+
+  # If no version specified, check environment variable
+  if [[ -z "${requested}" ]] && [[ -n "${ATMOSENV_ATMOS_VERSION:-}" ]]; then
+    requested="${ATMOSENV_ATMOS_VERSION}"
+    log_debug "Using version from ATMOSENV_ATMOS_VERSION: ${requested}"
+  fi
+
+  # If still no version, try version file
+  if [[ -z "${requested}" ]]; then
+    local version_file
+    version_file="$(get_version_file)"
+
+    if [[ -f "${version_file}" ]]; then
+      requested="$(read_version_file "${version_file}")" || true
+      log_debug "Using version from ${version_file}: ${requested}"
+    fi
+  fi
+
+  # Handle special keywords
+  case "${requested:-}" in
+    ""|latest)
+      local latest
+      latest="$(get_latest_installed)" || {
+        abort "No Atmos versions installed. Run 'atmosenv install' first."
+      }
+      echo "${latest}"
+      ;;
+    *)
+      clean_version "${requested}"
+      ;;
+  esac
+}
+
+main() {
+  local version=""
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        version="${1}"
+        ;;
+    esac
+    shift
+  done
+
+  # Resolve version
+  version="$(resolve_version "${version}")"
+
+  if [[ -z "${version}" ]]; then
+    abort "No version specified and no .atmos-version file found"
+  fi
+
+  log_debug "Resolved version: ${version}"
+
+  # Check if version is installed
+  if ! is_installed "${version}"; then
+    if [[ "${ATMOSENV_AUTO_INSTALL}" == "true" ]]; then
+      log_info "Version ${version} not installed. Installing..."
+      "${ATMOSENV_ROOT}/libexec/atmosenv-install" "${version}"
+    else
+      abort "Version ${version} is not installed. Run 'atmosenv install ${version}' first."
+    fi
+  fi
+
+  # Verify binary exists and is executable
+  local binary="${ATMOSENV_CONFIG_DIR}/versions/${version}/atmos"
+  if [[ ! -x "${binary}" ]]; then
+    abort "Atmos binary not found or not executable at: ${binary}"
+  fi
+
+  # Write version to default version file
+  local version_file="${ATMOSENV_CONFIG_DIR}/version"
+  echo "${version}" > "${version_file}"
+
+  log_info "Switched to Atmos ${version}"
+
+  # Show where the version is set
+  log_debug "Default version written to: ${version_file}"
+}
+
+main "$@"

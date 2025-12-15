@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# atmosenv-install - Install a specific version of Atmos
+
+set -eo pipefail
+
+# Source libraries
+# shellcheck source=lib/bashlog.sh
+source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+# shellcheck source=lib/helpers.sh
+source "${ATMOSENV_ROOT}/lib/helpers.sh"
+
+usage() {
+  cat <<EOF
+Usage: atmosenv install [OPTIONS] [VERSION]
+
+Install a specific version of Atmos.
+
+Arguments:
+   VERSION     Version to install (e.g., 1.201.0, latest)
+               If not specified, reads from .atmos-version file
+
+Options:
+   -l, --list  List available versions (alias for list-remote)
+   -h, --help  Show this help message
+
+Examples:
+   atmosenv install 1.201.0    Install version 1.201.0
+   atmosenv install latest     Install the latest version
+   atmosenv install            Install version from .atmos-version
+EOF
+}
+
+# Get latest version from GitHub API
+get_latest_version() {
+  log_debug "Fetching latest version from GitHub API"
+
+  local response
+  response="$(curlw "${ATMOSENV_GITHUB_API}/latest")" || {
+    abort "Failed to fetch latest version from GitHub API"
+  }
+
+  # Extract tag_name from JSON response
+  local version
+  if command_exists jq; then
+    version="$(echo "${response}" | jq -r '.tag_name')"
+  else
+    # Fallback: grep for tag_name
+    version="$(echo "${response}" | grep -o '"tag_name":\s*"[^"]*"' | head -1 | cut -d'"' -f4)"
+  fi
+
+  if [[ -z "${version}" ]] || [[ "${version}" == "null" ]]; then
+    abort "Failed to parse latest version from GitHub API response"
+  fi
+
+  # Return without 'v' prefix for consistency
+  clean_version "${version}"
+}
+
+# Resolve version string to actual version number
+resolve_version() {
+  local requested="${1:-}"
+
+  # If no version specified, try to read from version file
+  if [[ -z "${requested}" ]]; then
+    local version_file
+    version_file="$(get_version_file)"
+
+    if [[ -f "${version_file}" ]]; then
+      requested="$(read_version_file "${version_file}")" || true
+    fi
+  fi
+
+  # Still no version? Default to latest
+  if [[ -z "${requested}" ]]; then
+    requested="latest"
+  fi
+
+  # Handle special keywords
+  case "${requested}" in
+    latest)
+      get_latest_version
+      ;;
+    *)
+      # Clean the version (remove 'v' prefix if present)
+      clean_version "${requested}"
+      ;;
+  esac
+}
+
+# Download and install a specific version
+install_version() {
+  local version="${1}"
+  local os="${2:-$(detect_os)}"
+  local arch="${3:-$(detect_arch)}"
+
+  local version_dir="${ATMOSENV_CONFIG_DIR}/versions/${version}"
+  local binary_path="${version_dir}/atmos"
+
+  # Check if already installed
+  if [[ -f "${binary_path}" ]]; then
+    log_info "Atmos ${version} is already installed"
+    return 0
+  fi
+
+  log_info "Installing Atmos ${version} (${os}/${arch})"
+
+  # Create version directory
+  mkdir -p "${version_dir}"
+
+  # Construct download URL
+  local download_url
+  download_url="$(construct_download_url "${version}" "${os}" "${arch}")"
+
+  log_debug "Download URL: ${download_url}"
+
+  # Create temp directory for download
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir:-}"' EXIT
+
+  local tmp_binary="${tmp_dir}/atmos"
+  local ext
+  ext="$(get_binary_extension "${os}")"
+
+  # Download binary
+  download_file "${download_url}" "${tmp_binary}${ext}" || {
+    abort "Failed to download Atmos ${version} from ${download_url}"
+  }
+
+  # Try to download and verify checksum
+  # Checksum file pattern: atmos_{VERSION}_SHA256SUMS (no 'v' prefix in filename)
+  local checksum_url="https://github.com/cloudposse/atmos/releases/download/v${version}/atmos_${version}_SHA256SUMS"
+  local checksums_file="${tmp_dir}/SHA256SUMS"
+
+  if curlw "${checksum_url}" > "${checksums_file}" 2>/dev/null; then
+    log_debug "Downloaded checksums file"
+
+    # Find expected checksum for our binary (no 'v' prefix in binary name)
+    local binary_name="atmos_${version}_${os}_${arch}${ext}"
+    local expected_checksum
+    expected_checksum="$(grep "${binary_name}" "${checksums_file}" | cut -d ' ' -f 1)" || true
+
+    if [[ -n "${expected_checksum}" ]]; then
+      verify_checksum "${tmp_binary}${ext}" "${expected_checksum}" || {
+        abort "Checksum verification failed for Atmos ${version}"
+      }
+      log_info "Checksum verified successfully"
+    else
+      log_warn "Could not find checksum for ${binary_name}, skipping verification"
+    fi
+  else
+    log_warn "Could not download checksums file, skipping verification"
+  fi
+
+  # Make binary executable and move to version directory
+  chmod +x "${tmp_binary}${ext}"
+  mv "${tmp_binary}${ext}" "${binary_path}${ext}"
+
+  log_info "Atmos ${version} installed successfully"
+  log_info "Run 'atmosenv use ${version}' to switch to this version"
+}
+
+main() {
+  local version=""
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -l|--list)
+        exec "${ATMOSENV_ROOT}/libexec/atmosenv-list-remote"
+        ;;
+      -*)
+        abort "Unknown option: ${1}"
+        ;;
+      *)
+        version="${1}"
+        ;;
+    esac
+    shift
+  done
+
+  # Resolve version
+  version="$(resolve_version "${version}")"
+
+  if [[ -z "${version}" ]]; then
+    abort "No version specified and no .atmos-version file found"
+  fi
+
+  log_info "Resolved version: ${version}"
+
+  # Install
+  install_version "${version}"
+}
+
+main "$@"
