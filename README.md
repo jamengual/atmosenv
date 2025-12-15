@@ -232,7 +232,6 @@ atmosenv/
 │   ├── atmosenv-list
 │   └── ...
 ├── test/             # Test suite
-├── Formula/          # Homebrew formula
 └── .github/workflows/
 ```
 

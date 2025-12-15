@@ -69,7 +69,7 @@ Examples:
    atmosenv list                List installed versions
    atmosenv list-remote         List available versions
 
-For more information, visit: https://github.com/cloudposse/atmosenv
+For more information, visit: https://github.com/jamengual/atmosenv
 EOF
 }
 
