@@ -114,11 +114,29 @@ command_exists() {
 }
 
 # Download with curl or wget
+# Uses GITHUB_TOKEN for GitHub API requests if available (avoids rate limiting)
 curlw() {
+  local url="${1}"
+  shift
+
+  # Build auth header for GitHub API if token is available
+  local auth_header=""
+  if [[ -n "${GITHUB_TOKEN:-}" ]] && [[ "${url}" == *"api.github.com"* ]]; then
+    auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
+  fi
+
   if command_exists curl; then
-    curl -fsSL "$@"
+    if [[ -n "${auth_header}" ]]; then
+      curl -fsSL -H "${auth_header}" "${url}" "$@"
+    else
+      curl -fsSL "${url}" "$@"
+    fi
   elif command_exists wget; then
-    wget -qO- "$@"
+    if [[ -n "${auth_header}" ]]; then
+      wget -qO- --header="${auth_header}" "${url}" "$@"
+    else
+      wget -qO- "${url}" "$@"
+    fi
   else
     abort "Neither curl nor wget found. Please install one of them."
   fi
