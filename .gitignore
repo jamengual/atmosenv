@@ -26,6 +26,11 @@ build/
 # Local configuration
 .local/
 
+# AI/Agent tool artifacts
+.claude-flow/
+.hive-mind/
+.atmos/
+
 # Go artifacts (if any Go code is added later)
 *.exe
 *.exe~
