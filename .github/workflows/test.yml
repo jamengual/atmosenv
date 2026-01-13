@@ -46,7 +46,7 @@ jobs:
 
       - name: Run ShellCheck
         run: |
-          find bin lib libexec -type f -name "*.sh" -o -type f ! -name "*.*" | \
+          find bin libexec -type f -name "*.sh" -o -type f ! -name "*.*" | \
             xargs shellcheck --severity=warning
 
   release:
