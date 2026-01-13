@@ -75,8 +75,8 @@ run_test "Version with v prefix is cleaned" '
   echo "v1.200.0" > "${TEST_DIR}/.atmos-version"
   cd "${TEST_DIR}"
   # Source the lib to test clean_version
-  source "${ATMOSENV_ROOT}/lib/helpers.sh"
-  source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+  source "${ATMOSENV_ROOT}/libexec/helpers.sh"
+  source "${ATMOSENV_ROOT}/libexec/atmosenv-version-file.sh"
   version="$(read_version_file "${TEST_DIR}/.atmos-version")"
   # Note: read_version_file returns raw content; clean_version is called elsewhere
   [[ "${version}" == "v1.200.0" ]] || [[ "${version}" == "1.200.0" ]]
@@ -98,8 +98,8 @@ run_test "Comments in version file are ignored" '
 1.200.0
 EOF
   cd "${TEST_DIR}"
-  source "${ATMOSENV_ROOT}/lib/helpers.sh"
-  source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+  source "${ATMOSENV_ROOT}/libexec/helpers.sh"
+  source "${ATMOSENV_ROOT}/libexec/atmosenv-version-file.sh"
   version="$(read_version_file "${TEST_DIR}/.atmos-version")"
   assert_contains "${version}" "1.200.0"
 '
@@ -108,8 +108,8 @@ EOF
 run_test "Whitespace in version file is trimmed" '
   echo "  1.200.0  " > "${TEST_DIR}/.atmos-version"
   cd "${TEST_DIR}"
-  source "${ATMOSENV_ROOT}/lib/helpers.sh"
-  source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+  source "${ATMOSENV_ROOT}/libexec/helpers.sh"
+  source "${ATMOSENV_ROOT}/libexec/atmosenv-version-file.sh"
   version="$(read_version_file "${TEST_DIR}/.atmos-version")"
   [[ "${version}" == "1.200.0" ]]
 '

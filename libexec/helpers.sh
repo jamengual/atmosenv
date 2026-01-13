@@ -11,8 +11,8 @@ fi
 
 # Source logging if not already loaded
 if ! declare -f log >/dev/null 2>&1; then
-  # shellcheck source=lib/bashlog.sh
-  source "${ATMOSENV_ROOT}/lib/bashlog.sh"
+  # shellcheck source=libexec/bashlog.sh
+  source "${ATMOSENV_ROOT}/libexec/bashlog.sh"
 fi
 
 # Default configuration directory (XDG compliant)

@@ -23,10 +23,10 @@ resolve_root() {
 export ATMOSENV_ROOT="${ATMOSENV_ROOT:-$(resolve_root)}"
 
 # Source core libraries
-# shellcheck source=lib/bashlog.sh
-source "${ATMOSENV_ROOT}/lib/bashlog.sh"
-# shellcheck source=lib/helpers.sh
-source "${ATMOSENV_ROOT}/lib/helpers.sh"
+# shellcheck source=libexec/bashlog.sh
+source "${ATMOSENV_ROOT}/libexec/bashlog.sh"
+# shellcheck source=libexec/helpers.sh
+source "${ATMOSENV_ROOT}/libexec/helpers.sh"
 
 # Add libexec to PATH
 export PATH="${ATMOSENV_ROOT}/libexec:${PATH}"
