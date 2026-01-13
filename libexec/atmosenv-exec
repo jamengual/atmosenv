@@ -4,12 +4,12 @@
 set -eo pipefail
 
 # Source libraries
-# shellcheck source=lib/bashlog.sh
-source "${ATMOSENV_ROOT}/lib/bashlog.sh"
-# shellcheck source=lib/helpers.sh
-source "${ATMOSENV_ROOT}/lib/helpers.sh"
-# shellcheck source=lib/atmosenv-version-file.sh
-source "${ATMOSENV_ROOT}/lib/atmosenv-version-file.sh"
+# shellcheck source=libexec/bashlog.sh
+source "${ATMOSENV_ROOT}/libexec/bashlog.sh"
+# shellcheck source=libexec/helpers.sh
+source "${ATMOSENV_ROOT}/libexec/helpers.sh"
+# shellcheck source=libexec/atmosenv-version-file.sh
+source "${ATMOSENV_ROOT}/libexec/atmosenv-version-file.sh"
 
 # Get the current version to use
 get_version() {

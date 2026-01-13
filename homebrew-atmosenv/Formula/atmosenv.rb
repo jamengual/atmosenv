@@ -23,7 +23,7 @@ class Atmosenv < Formula
   conflicts_with "atmos", because: "atmosenv manages atmos versions"
 
   def install
-    prefix.install %w[bin lib libexec]
+    prefix.install %w[bin libexec]
 
     # Install share directory if it exists
     prefix.install "share" if File.directory?("share")
