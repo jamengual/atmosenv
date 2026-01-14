@@ -66,3 +66,58 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           generate_release_notes: true
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: jamengual
+          repositories: homebrew-atmosenv
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Calculate SHA256
+        id: sha256
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          SHA256=$(curl -sL "https://github.com/jamengual/atmosenv/archive/refs/tags/v${VERSION}.tar.gz" | shasum -a 256 | cut -d ' ' -f 1)
+          echo "sha256=${SHA256}" >> $GITHUB_OUTPUT
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: jamengual/homebrew-atmosenv
+          token: ${{ steps.app-token.outputs.token }}
+          path: homebrew-tap
+
+      - name: Update formula
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+        run: |
+          cd homebrew-tap
+          sed -i "s|url \"https://github.com/jamengual/atmosenv/archive/refs/tags/v.*\.tar\.gz\"|url \"https://github.com/jamengual/atmosenv/archive/refs/tags/v${VERSION}.tar.gz\"|" Formula/atmosenv.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/atmosenv.rb
+          cat Formula/atmosenv.rb
+
+      - name: Commit and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/atmosenv.rb
+          git commit -m "Update atmosenv to v${VERSION}"
+          git push
